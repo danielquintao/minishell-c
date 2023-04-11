@@ -20,6 +20,13 @@ int main() {
         printf("echo %s\n", cmd);
         printf("%ld caracteres lidos\n", nchars_cmd);
 
+        // special case: exit
+        if(strcmp(cmd, "exit") == 0) {
+            free(cmd);
+            free(argv);
+            break;
+        }
+
         prog = strtok(cmd, delim);
         if(prog) {
             printf("comando: %s\n", prog);
