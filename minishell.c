@@ -37,6 +37,7 @@ int main() {
             printf("comando: %s\n", prog);
         }
         
+        argv[argc++] = prog;  // first argv is always the own command
         while(tmp = strtok(NULL, " ")) {
             argv = realloc(argv, (argc + 1) * sizeof *argv);
             // argv[argc] = malloc(sizeof tmp);
@@ -67,9 +68,8 @@ int main() {
             int * wstatus;
             wait(wstatus);
         } else {
-            char * const nullargv[] = {NULL};
             char * const nullenvp[] = {NULL};
-            execve(prog, nullargv, nullenvp); // TODO use argv
+            execve(prog, argv, nullenvp); // TODO use argv
         }
 
         // free memory
