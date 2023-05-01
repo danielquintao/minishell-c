@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <stdio.h>  // TODO remove me
+#include <stdio.h>
 
 int main() {
 
@@ -24,8 +24,6 @@ int main() {
         ssize_t trash = write(1, "$> ", 3);
         ssize_t nchars_cmd = read(0, cmd, 255);
         cmd[nchars_cmd - 1] = '\0';
-        printf("echo %s\n", cmd);
-        printf("%ld caracteres lidos\n", nchars_cmd);
 
         // special case: exit
         if(strcmp(cmd, "exit") == 0) {
@@ -36,9 +34,6 @@ int main() {
 
         // parse cmd
         prog = strtok(cmd, delim);
-        if(prog) {
-            printf("comando: %s\n", prog);
-        }
         
         argv[argc++] = prog;  // first argv is always the own command
         while(tmp = strtok(NULL, " ")) {
@@ -72,8 +67,6 @@ int main() {
         argv = realloc(argv, (argc + 1) * sizeof *argv);
         argv[argc] = NULL;
 
-        for(int i = 0; i < argc; i++) printf("arg: %s\n", argv[i]);
-
         // deal corner case of I/O redirection symbol (>, <) in an argument (i.e. no surrounding spaces)
         int restart = 0;
         for(int i = 0; i < argc; i++) {
@@ -98,12 +91,18 @@ int main() {
         int res = stat(prog, &sb);
         if(res == -1 && errno == 2) {
             printf("No such file\n");
+            free(cmd);
+            free(argv);
             continue;
         } else if(res == -1) {
             printf("Some error occurred while checking for file %s\n", prog);
+            free(cmd);
+            free(argv);
             continue;
         } else if((sb.st_mode & S_IFMT) != S_IFREG) {
             printf("%s is not a regular file\n", prog);
+            free(cmd);
+            free(argv);
             continue;
         }
 
@@ -143,8 +142,6 @@ int main() {
         free(cmd); // free(prog) and free(tmp) are unnecessary, since point to adresses "mallocated" by cmd
         //            Similarly for the arguments argv[i] (i < argc)
         free(argv);
-        // free(tmp);
-        // // break;
     }
 
 
