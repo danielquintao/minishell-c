@@ -43,6 +43,8 @@ int main() {
             // argv[argc] = malloc(sizeof tmp);
             argv[argc++] = tmp;
         }
+        argv = realloc(argv, (argc + 1) * sizeof *argv);
+        argv[argc] = NULL;
 
         for(int i = 0; i < argc; i++) printf("arg: %s\n", argv[i]);
 
@@ -69,14 +71,16 @@ int main() {
             wait(wstatus);
         } else {
             char * const nullenvp[] = {NULL};
-            execve(prog, argv, nullenvp); // TODO use argv
+            if(execve(prog, argv, nullenvp) == -1) {
+                printf("Error on execve: %d\n", errno);
+            }
         }
 
         // free memory
         free(cmd); // free(prog) is unnecessary, since prog points to an adress "mallocated" by cmd
         //            Similarly for the arguments (argv[i], i < argc)
         free(argv);
-        free(tmp);
+        free(tmp); //? do we need it? After all, tmp points to cmd substrings...
         // // break;
     }
 
