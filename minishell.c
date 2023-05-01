@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>  // TODO remove me
 
@@ -13,7 +14,9 @@ int main() {
         // read cmd
         char *cmd;
         cmd = malloc(256);
-        char *prog, **argv, *tmp;
+        char *prog, **argv, *tmp, *in_fd, *out_fd;
+        int in_fd_flag = 0; // whether we have input redirection (may change to 1 during execution)
+        int out_fd_flag = 0; // whether we have output redirection (may change to 1 during execution)
         argv = malloc(sizeof *argv);
         const char *delim = " ";
         short argc = 0;
@@ -39,6 +42,29 @@ int main() {
         
         argv[argc++] = prog;  // first argv is always the own command
         while(tmp = strtok(NULL, " ")) {
+            // check for I/O redirection requests
+            if(strcmp(tmp, "<") == 0) {
+                tmp = strtok(NULL, " ");
+                if(tmp == NULL) {
+                    printf("No string after '<'... Ignoring it.\n");
+                    break;
+                }
+                in_fd = tmp;
+                in_fd_flag = 1;
+                continue;
+            }
+            if(strcmp(tmp, ">") == 0) {
+                tmp = strtok(NULL, " ");
+                if(tmp == NULL) {
+                    printf("No string after '>'... Ignoring it.\n");
+                    break;
+                }
+                out_fd = tmp;
+                out_fd_flag = 1;
+                continue;
+            }
+            // ----------------------
+            // keep processing arguments
             argv = realloc(argv, (argc + 1) * sizeof *argv);
             // argv[argc] = malloc(sizeof tmp);
             argv[argc++] = tmp;
@@ -47,6 +73,25 @@ int main() {
         argv[argc] = NULL;
 
         for(int i = 0; i < argc; i++) printf("arg: %s\n", argv[i]);
+
+        // deal corner case of I/O redirection symbol (>, <) in an argument (i.e. no surrounding spaces)
+        int restart = 0;
+        for(int i = 0; i < argc; i++) {
+            char * str = argv[i];
+            for(int j = 0; j < strlen(str); j++) {
+                if(str[j] == '<' || str[j] == '>') {
+                    printf("MINISHELL ERROR: Found a < or a > in argument %s.\n", str);
+                    printf("Please add blank spaces if your intention is to perform I/O redirection.\n");
+                    restart = 1;
+                    break;
+                }
+            }
+        }
+        if(restart) {
+            free(cmd);
+            free(argv);
+            continue;
+        }
 
         // check if program file exists
         struct stat sb;
@@ -70,6 +115,24 @@ int main() {
             int * wstatus;
             wait(wstatus);
         } else {
+            // deal with I/O redirection
+            if(out_fd_flag) {
+                int newfd = open(out_fd, O_CREAT|O_WRONLY|O_TRUNC, 00664);
+                int res = dup2(newfd, 1); // 1 = stdout
+                if(res == -1) {
+                    printf("ERROR on dup2:\n%s\n", strerror(errno));
+                    return 1;
+                }
+            }
+            if(in_fd_flag) {
+                int newfd = open(in_fd, O_RDONLY);
+                int res = dup2(newfd, 0); // 0 = stdin
+                if(res == -1) {
+                    printf("ERROR on dup2:\n%s\n", strerror(errno));
+                    return 1;
+                }
+            }
+            // call execve
             char * const nullenvp[] = {NULL};
             if(execve(prog, argv, nullenvp) == -1) {
                 printf("Error on execve: %d\n", errno);
