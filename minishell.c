@@ -1,3 +1,5 @@
+/* Daniel Quintao de Moraes */
+/* CSC-33 course */
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
