@@ -77,10 +77,10 @@ int main() {
         }
 
         // free memory
-        free(cmd); // free(prog) is unnecessary, since prog points to an adress "mallocated" by cmd
-        //            Similarly for the arguments (argv[i], i < argc)
+        free(cmd); // free(prog) and free(tmp) are unnecessary, since point to adresses "mallocated" by cmd
+        //            Similarly for the arguments argv[i] (i < argc)
         free(argv);
-        free(tmp); //? do we need it? After all, tmp points to cmd substrings...
+        // free(tmp);
         // // break;
     }
 
