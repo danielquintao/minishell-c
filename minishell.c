@@ -161,11 +161,7 @@ int main() {
         int n_proc = 0;
         pid_t pid;
         process *proc;
-        for(proc = proc_begin; proc != proc_end; proc = proc->NEXT){ //* DEBUG
-            printf("TEST PROC %s\n", proc->prog); //* DEBUG
-        }
         for(proc = proc_begin; proc != proc_end; proc = proc->NEXT) {
-            printf("entered loop\n"); //* DEBUG
             n_proc++;
             // check if program file exists
             struct stat sb;
@@ -203,7 +199,6 @@ int main() {
                     printf("Error on execve: %d\n", errno);
                 }
             }
-            printf("parent here\n"); //* DEBUG
         }
         free(proc);
 
