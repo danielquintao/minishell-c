@@ -10,6 +10,27 @@
 #include <errno.h>
 #include <stdio.h>
 
+typedef struct process {
+        char *prog;
+        char **argv;
+        int argc;
+        int fd_in;
+        int fd_out;
+        struct process *NEXT;
+    } process;
+
+void free_pipeline(process *proc_begin, process *proc_end) {
+    process *prev, *curr;
+    prev = proc_begin;
+    curr = proc_begin;
+    while(curr != proc_end) {
+        free(curr->argv);
+        curr = curr->NEXT;
+        free(prev);
+        prev = curr;
+    }
+}
+
 int main() {
 
     // welcome message
@@ -22,12 +43,11 @@ int main() {
         // read cmd
         char *cmd;
         cmd = malloc(256);
-        char *prog, **argv, *tmp, *in_fd, *out_fd;
-        int in_fd_flag = 0; // whether we have input redirection (may change to 1 during execution)
-        int out_fd_flag = 0; // whether we have output redirection (may change to 1 during execution)
-        argv = malloc(sizeof *argv);
+        // linked list of processes:
+        process *proc_begin;
+        process *proc_end;
         const char *delim = " ";
-        short argc = 0;
+        char *tmp;
 
         ssize_t trash = write(1, "$> ", 3);
         ssize_t nchars_cmd = read(0, cmd, 255);
@@ -36,120 +56,166 @@ int main() {
         // special case: exit
         if(strcmp(cmd, "exit") == 0) {
             free(cmd);
-            free(argv);
             break;
         }
 
-        // parse cmd
-        prog = strtok(cmd, delim);
-        
-        argv[argc++] = prog;  // first argv is always the own command
-        while(tmp = strtok(NULL, " ")) {
-            // check for I/O redirection requests
-            if(strcmp(tmp, "<") == 0) {
-                tmp = strtok(NULL, " ");
-                if(tmp == NULL) {
-                    printf("No string after '<'... Ignoring it.\n");
-                    break;
-                }
-                in_fd = tmp;
-                in_fd_flag = 1;
-                continue;
+        // TODO solve case where no command (just >=0 blank spaces and ENTER)
+
+        // populate processes list:
+        int pipefd[2] = {-1, -1};
+        int initial_fdin = 0;
+        int last_fdout = 1;
+        char has_next = 1; // whether there is a next process in the pipeline
+        proc_begin = NULL;
+        tmp = strtok(cmd, delim);
+        proc_end = (process *) malloc(sizeof (*proc_end));
+        while(has_next) {
+            if(proc_begin == NULL) { // first loop cycle
+                proc_begin = proc_end;
             }
-            if(strcmp(tmp, ">") == 0) {
-                tmp = strtok(NULL, " ");
-                if(tmp == NULL) {
-                    printf("No string after '>'... Ignoring it.\n");
-                    break;
-                }
-                out_fd = tmp;
-                out_fd_flag = 1;
-                continue;
+            proc_end->argv = malloc(sizeof *(proc_end->argv));
+            proc_end->argc = 0;
+            has_next = 0;
+            proc_end->prog = tmp;
+            proc_end->argv[proc_end->argc++] = proc_end->prog;  // first argv is always the own command
+            if(pipefd[0] != -1) { // if there is a previous process in pipeline
+                proc_end->fd_in = pipefd[0]; // set pipe read-end file descriptor
             }
-            // ----------------------
-            // keep processing arguments
-            argv = realloc(argv, (argc + 1) * sizeof *argv);
-            // argv[argc] = malloc(sizeof tmp);
-            argv[argc++] = tmp;
+            proc_end->fd_out = last_fdout; // defult value that may be overwritten
+            // keep reading arguments (or I/O redirectionin symbols) until pipe or end
+            while(tmp = strtok(NULL, " ")) {
+                // check for I/O redirection requests
+                if(strcmp(tmp, "<") == 0) {
+                    tmp = strtok(NULL, " ");
+                    if(tmp == NULL) {
+                        printf("No string after '<'... Ignoring it.\n");
+                        break;
+                    }
+                    initial_fdin = open(tmp, O_RDONLY);
+                    continue;
+                }
+                if(strcmp(tmp, ">") == 0) {
+                    tmp = strtok(NULL, " ");
+                    if(tmp == NULL) {
+                        printf("No string after '>'... Ignoring it.\n");
+                        break;
+                    }
+                    last_fdout = open(tmp, O_CREAT|O_WRONLY|O_TRUNC, 00664);
+                    // update fd_out of last process (this assignment will have no effect if a pipe appears later):
+                    proc_end->fd_out = last_fdout;
+                    continue;
+                }
+                // ----------------------
+                // check for pipe
+                if(strcmp(tmp, "|") == 0) {
+                    has_next = 1;  // there is another command after pipe
+                    if(pipe(pipefd) == -1) {
+                        printf("ERROR on pipe:\n%s\n", strerror(errno));
+                        return 1;
+                    }
+                    proc_end->fd_out = pipefd[1]; // set pipe write-end file descriptor
+                    proc_end->NEXT = (process *) malloc(sizeof (*proc_end)); // allocate mem for next process struct
+                    break; // no more args for this process
+                }
+                // ----------------------
+                // keep processing arguments
+                proc_end->argv = realloc(proc_end->argv, (proc_end->argc + 1) * sizeof *(proc_end->argv));
+                // argv[argc] = malloc(sizeof tmp);
+                proc_end->argv[proc_end->argc++] = tmp;
+            }
+            proc_end->argv = realloc(proc_end->argv, (proc_end->argc + 1) * sizeof *(proc_end->argv));
+            proc_end->argv[proc_end->argc] = NULL;
+            // walk in the linked list
+            proc_end = proc_end->NEXT;
+            // read next prog
+            tmp = strtok(NULL, " ");
         }
-        argv = realloc(argv, (argc + 1) * sizeof *argv);
-        argv[argc] = NULL;
 
-        // deal corner case of I/O redirection symbol (>, <) in an argument (i.e. no surrounding spaces)
-        int restart = 0;
-        for(int i = 0; i < argc; i++) {
-            char * str = argv[i];
-            for(int j = 0; j < strlen(str); j++) {
-                if(str[j] == '<' || str[j] == '>') {
-                    printf("MINISHELL ERROR: Found a < or a > in argument %s.\n", str);
-                    printf("Please add blank spaces if your intention is to perform I/O redirection.\n");
-                    restart = 1;
-                    break;
+        // Set extremity read file descriptors of pipeline (which may have been changed)
+        proc_begin->fd_in = initial_fdin; // note tat proc_end->fd_out has already been set
+
+
+        //* /////////////////////////////////////////////////////////////////////////////////////////////////////
+        // TODO BRING IT BACK
+        // // deal corner case of I/O redirection symbol (>, <) in an argument (i.e. no surrounding spaces)
+        // int restart = 0;
+        // for(int i = 0; i < argc; i++) {
+        //     char * str = argv[i];
+        //     for(int j = 0; j < strlen(str); j++) {
+        //         if(str[j] == '<' || str[j] == '>') {
+        //             printf("MINISHELL ERROR: Found a < or a > in argument %s.\n", str);
+        //             printf("Please add blank spaces if your intention is to perform I/O redirection.\n");
+        //             restart = 1;
+        //             break;
+        //         }
+        //     }
+        // }
+        // if(restart) {
+        //     free(cmd);
+        //     free(argv);
+        //     continue;
+        // }
+        //* /////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // execute processes
+        int n_proc = 0;
+        pid_t pid;
+        process *proc;
+        for(proc = proc_begin; proc != proc_end; proc = proc->NEXT){ //* DEBUG
+            printf("TEST PROC %s\n", proc->prog); //* DEBUG
+        }
+        for(proc = proc_begin; proc != proc_end; proc = proc->NEXT) {
+            printf("entered loop\n"); //* DEBUG
+            n_proc++;
+            // check if program file exists
+            struct stat sb;
+            int res = stat(proc->prog, &sb);
+            if(res == -1 && errno == 2) {
+                printf("No such file\n");
+                break;
+            } else if(res == -1) {
+                printf("Some error occurred while checking for file %s\n", proc->prog);
+                break;
+            } else if((sb.st_mode & S_IFMT) != S_IFREG) {
+                printf("%s is not a regular file\n", proc->prog);
+                break;
+            }
+            // execute program
+            pid = fork();
+            if(pid == 0) {
+                // set file descriptors (previously defined according to the pipes and I/O redirection)
+                printf("FD_IN OF PROC %s: %d\n", proc->prog, proc->fd_in); //* DEBUG
+                printf("FD_OUT OF PROC %s: %d\n", proc->prog, proc->fd_out); //* DEBUG
+                // TODO close file descriptors
+                int res = dup2(proc->fd_out, 1);
+                if(res == -1) {
+                    printf("ERROR on dup2:\n%s\n", strerror(errno));
+                    return 1;
+                }
+                res = dup2(proc->fd_in, 0);
+                if(res == -1) {
+                    printf("ERROR on dup2:\n%s\n", strerror(errno));
+                    return 1;
+                }
+                // execve
+                char * const nullenvp[] = {NULL};
+                if(execve(proc->prog, proc->argv, nullenvp) == -1) {
+                    printf("Error on execve: %d\n", errno);
                 }
             }
+            printf("parent here\n"); //* DEBUG
         }
-        if(restart) {
-            free(cmd);
-            free(argv);
-            continue;
-        }
+        free(proc);
 
-        // check if program file exists
-        struct stat sb;
-        int res = stat(prog, &sb);
-        if(res == -1 && errno == 2) {
-            printf("No such file\n");
-            free(cmd);
-            free(argv);
-            continue;
-        } else if(res == -1) {
-            printf("Some error occurred while checking for file %s\n", prog);
-            free(cmd);
-            free(argv);
-            continue;
-        } else if((sb.st_mode & S_IFMT) != S_IFREG) {
-            printf("%s is not a regular file\n", prog);
-            free(cmd);
-            free(argv);
-            continue;
-        }
-
-        // execute program
-        pid_t pid = fork();
-
+        // parent waits for children
         if(pid != 0) {
-            // we are in parent
             int * wstatus;
-            wait(wstatus);
-        } else {
-            // deal with I/O redirection
-            if(out_fd_flag) {
-                int newfd = open(out_fd, O_CREAT|O_WRONLY|O_TRUNC, 00664);
-                int res = dup2(newfd, 1); // 1 = stdout
-                if(res == -1) {
-                    printf("ERROR on dup2:\n%s\n", strerror(errno));
-                    return 1;
-                }
-            }
-            if(in_fd_flag) {
-                int newfd = open(in_fd, O_RDONLY);
-                int res = dup2(newfd, 0); // 0 = stdin
-                if(res == -1) {
-                    printf("ERROR on dup2:\n%s\n", strerror(errno));
-                    return 1;
-                }
-            }
-            // call execve
-            char * const nullenvp[] = {NULL};
-            if(execve(prog, argv, nullenvp) == -1) {
-                printf("Error on execve: %d\n", errno);
-            }
+            for(int i = 0; i < n_proc; i++) wait(wstatus);
         }
 
         // free memory
-        free(cmd); // free(prog) and free(tmp) are unnecessary, since point to adresses "mallocated" by cmd
-        //            Similarly for the arguments argv[i] (i < argc)
-        free(argv);
+        free(cmd);
+        free_pipeline(proc_begin, proc_end);
     }
 
 
