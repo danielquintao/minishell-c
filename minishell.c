@@ -19,16 +19,31 @@ typedef struct process {
         struct process *NEXT;
     } process;
 
-void free_pipeline(process *proc_begin, process *proc_end) {
+void free_pipeline(process *proc_begin) {
     process *prev, *curr;
     prev = proc_begin;
     curr = proc_begin;
-    while(curr != proc_end) {
+    while(curr != NULL) {
+        printf("Deleting process %p\n", curr); //! DEBUG
         free(curr->argv);
+        printf("-----> liberou memoria de algum argv\n");  //! DEBUG
         curr = curr->NEXT;
         free(prev);
+        printf("-----> liberou memoria de um ponteiro processo\n");  //! DEBUG
         prev = curr;
     }
+}
+
+// FOR DEBUGGING:
+void print_process(process *proc) {
+    printf("Process addr %p:\n", proc);
+    printf("\tprog: %s\n", proc->prog);
+    printf("\targc: %d\n", proc->argc);
+    printf("\targs:\n");
+    for(int i = 0; i < proc->argc; i++) 
+        printf("\t\t%s\n", proc->argv[i]);
+    printf("\tfd_in: %d\n", proc->fd_in);
+    printf("\tfd_out: %d\n", proc->fd_out);
 }
 
 int main() {
@@ -73,6 +88,7 @@ int main() {
             if(proc_begin == NULL) { // first loop cycle
                 proc_begin = proc_end;
             }
+            proc_end->NEXT = NULL;
             proc_end->argv = malloc(sizeof *(proc_end->argv));
             proc_end->argc = 0;
             has_next = 0;
@@ -113,6 +129,7 @@ int main() {
                         printf("ERROR on pipe:\n%s\n", strerror(errno));
                         return 1;
                     }
+                    printf("Created pipe {%d, %d}\n", pipefd[0], pipefd[1]); //! DEBUG
                     proc_end->fd_out = pipefd[1]; // set pipe write-end file descriptor
                     proc_end->NEXT = (process *) malloc(sizeof (*proc_end)); // allocate mem for next process struct
                     break; // no more args for this process
@@ -161,7 +178,12 @@ int main() {
         int n_proc = 0;
         pid_t pid;
         process *proc;
+        printf("TERMINAL GRPID:  %d\n", tcgetpgrp(0)); //! DEBUG
+        printf("PARENT PID: %d, GRPID: %d\n", getpid(), getpgrp()); //! DEBUG
         for(proc = proc_begin; proc != proc_end; proc = proc->NEXT) {
+            //! DEBUG
+            print_process(proc);
+
             n_proc++;
             // check if program file exists
             struct stat sb;
@@ -179,9 +201,8 @@ int main() {
             // execute program
             pid = fork();
             if(pid == 0) {
+                printf("CHILD PID: %d, GRPID: %d\n", getpid(), getpgrp()); //! DEBUG
                 // set file descriptors (previously defined according to the pipes and I/O redirection)
-                printf("FD_IN OF PROC %s: %d\n", proc->prog, proc->fd_in); //* DEBUG
-                printf("FD_OUT OF PROC %s: %d\n", proc->prog, proc->fd_out); //* DEBUG
                 // TODO close file descriptors
                 int res = dup2(proc->fd_out, 1);
                 if(res == -1) {
@@ -198,9 +219,10 @@ int main() {
                 if(execve(proc->prog, proc->argv, nullenvp) == -1) {
                     printf("Error on execve: %d\n", errno);
                 }
+            } else if(pid < 0) {
+                printf("Error on fork: %d\n", errno);
             }
         }
-        free(proc);
 
         // parent waits for children
         if(pid != 0) {
@@ -210,7 +232,8 @@ int main() {
 
         // free memory
         free(cmd);
-        free_pipeline(proc_begin, proc_end);
+        printf("-----> liberou memoria de cmd\n"); //! DEBUG
+        free_pipeline(proc_begin);
     }
 
 
