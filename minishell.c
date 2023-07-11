@@ -199,11 +199,11 @@ int main() {
                 break;
             }
             // execute program
+            printf("Entering child process nb %d...\n", n_proc); //! DEBUG
             pid = fork();
             if(pid == 0) {
                 printf("CHILD PID: %d, GRPID: %d\n", getpid(), getpgrp()); //! DEBUG
                 // set file descriptors (previously defined according to the pipes and I/O redirection)
-                // TODO close file descriptors
                 int res = dup2(proc->fd_out, 1);
                 if(res == -1) {
                     printf("ERROR on dup2:\n%s\n", strerror(errno));
@@ -214,6 +214,21 @@ int main() {
                     printf("ERROR on dup2:\n%s\n", strerror(errno));
                     return 1;
                 }
+                // close files BEFORE execve (see https://www.gnu.org/software/libc/manual/html_node/Launching-Jobs.html)
+                if(proc->fd_out != 1) {
+                    res = close(proc->fd_out);
+                    if(res == -1) {
+                        printf("ERROR closing write file descriptor of %d:\n%s\n", getpid(), strerror(errno));
+                        return 1;
+                    }
+                }
+                if(proc->fd_in != 0) {
+                    res = close(proc->fd_in);
+                    if(res == -1) {
+                        printf("ERROR closing read file descriptor of %d:\n%s\n", getpid(), strerror(errno));
+                        return 1;
+                    }
+                }
                 // execve
                 char * const nullenvp[] = {NULL};
                 if(execve(proc->prog, proc->argv, nullenvp) == -1) {
@@ -222,12 +237,33 @@ int main() {
             } else if(pid < 0) {
                 printf("Error on fork: %d\n", errno);
             }
+            else {
+                printf("(In parent) Just launched child process %d. Wait for it.\n", n_proc);
+                // close file descriptors in parent as well
+                if(proc->fd_out != 1) {
+                    res = close(proc->fd_out);
+                    if(res == -1) {
+                        printf("ERROR closing write file descriptor of child nb %d (1-indexed):\n%s\n", n_proc, strerror(errno));
+                        return 1;
+                    }
+                }
+                if(proc->fd_in != 0) {
+                    res = close(proc->fd_in);
+                    if(res == -1) {
+                        printf("ERROR closing read file descriptor of child nb %d (1-indexed):\n%s\n", n_proc, strerror(errno));
+                        return 1;
+                    }
+                }
+            }
         }
 
         // parent waits for children
         if(pid != 0) {
             int * wstatus;
-            for(int i = 0; i < n_proc; i++) wait(wstatus);
+            for(int i = 0; i < n_proc; i++) {
+                wait(wstatus);
+                printf("One more child returned! Remaining: %d\n", n_proc - i - 1); //! DEBUG
+            }
         }
 
         // free memory
