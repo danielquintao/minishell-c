@@ -579,7 +579,7 @@ int main() {
         new_job->stderr = 2;
         new_job->pgid = 0; // by examining function launch_job, we understand the default val of pgid is expected to be 0
         new_job->notified = 0;
-        new_job->command = malloc(sizeof cmd);
+        new_job->command = malloc(256);
         strcpy(new_job->command, cmd);
         while(has_next) {
             if(proc_begin == NULL) { // first loop cycle
@@ -592,6 +592,8 @@ int main() {
             proc_end->argv[proc_end->argc++] = tmp;  // first argv is always the own command
             // keep reading arguments until pipe or end
             while(tmp = strtok(NULL, " ")) {
+                strcat(new_job->command, " ");
+                strcat(new_job->command, tmp);
                 // check for I/O redirection requests
                 if(strcmp(tmp, "<") == 0) {
                     tmp = strtok(NULL, " ");
@@ -600,6 +602,8 @@ int main() {
                         break;
                     }
                     new_job->stdin = open(tmp, O_RDONLY);
+                    strcat(new_job->command, " ");
+                    strcat(new_job->command, tmp);
                     continue;
                 }
                 if(strcmp(tmp, ">") == 0) {
@@ -609,6 +613,8 @@ int main() {
                         break;
                     }
                     new_job->stdout = open(tmp, O_CREAT|O_WRONLY|O_TRUNC, 00664);
+                    strcat(new_job->command, " ");
+                    strcat(new_job->command, tmp);
                     continue;
                 }
                 // ----------------------
@@ -630,6 +636,10 @@ int main() {
             proc_end = proc_end->next;
             // read next prog
             tmp = strtok(NULL, " ");
+            if (tmp != NULL) {
+                strcat(new_job->command, " ");
+                strcat(new_job->command, tmp);
+            }
         }
         new_job->first_process = proc_begin;
         // add job to job queue:
