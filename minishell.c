@@ -164,8 +164,6 @@ void init_shell ()
 void format_job_info (job *j, const char *status)
 {
   fprintf (stderr, "%ld (%s): %s\n", (long)j->pgid, status, j->command);
-  //!DEBUG:
-  printf("stdin: %d\nstdout: %d\n", j->stdin, j->stdout);
 }
 
 /* Store the status of the process pid that was returned by waitpid.
@@ -423,8 +421,6 @@ void launch_job (job *j, int foreground)
       infile = mypipe[0];
     }
 
-  format_job_info (j, "launched");
-
   if (!shell_is_interactive)
     wait_for_job (j);
   else if (foreground)
@@ -445,7 +441,9 @@ void continue_job (job *j, int foreground)
 
 // Custom version of GNU man's do_job_notification function (see above) that is more suitable for
 // answering user's command "jobs".
-// Motivation: Original do_job_notification mark stopped jobs to notify the user only once.
+// Motivations:
+//  1. Original do_job_notification mark stopped jobs to notify the user only once.
+//  2. We want to print the job position in the jobs linked list instead of its pgid as does do_job_notification
 // Indeed, do_job_notification is intended to be called without user's explicit request
 void do_custom_job_notification (void)
 {
@@ -455,19 +453,22 @@ void do_custom_job_notification (void)
   update_status ();
 
   jlast = NULL;
+  int i = 0;
   for (j = first_job; j; j = jnext)
     {
       jnext = j->next;
 
       /* Notify the user about stopped jobs */
       if (job_is_stopped (j)) {
-        format_job_info (j, "stopped");
+        printf("[%d] (%s): %s\n", i, "stopped", j->command);
         jlast = j;
       }
 
       /* Don't say anything about jobs that are still running.  */
       else
         jlast = j;
+    
+      i++;
     }
 }
 
