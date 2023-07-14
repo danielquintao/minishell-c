@@ -1,6 +1,6 @@
 # Minishell
 
-This is a toy linux shell implemented as part of the course CSC33 - Operating Systems - and which accepts I/O redirection, pipelines, and stopping/continuing jobs through <kbd>CTRL</kbd>+<kbd>Z</kbd> and ``fg N``, where "N" is the 0-indexed index of the job (use ``jobs`` for a list of jobs with their indexes).
+This is a toy linux shell implemented as part of the course CSC33 - Operating Systems - and which accepts I/O redirection, pipelines, and stopping/continuing jobs through <kbd>CTRL</kbd>+<kbd>Z</kbd> and ``fg N``, where "N" is the 1-indexed index of the job (use ``jobs`` for a list of jobs with their indexes).
 
 Like famous Linux shells, programs should be used with a relative or absolute path. However, in this minishell, usual built-in programs such as ``ls`` are not in any "path" so those commands should also be given as paths to their binaries (i.e., use ``/bin/ls`` instead of just ``ls``).
 

@@ -62,12 +62,9 @@ void free_pipeline(process *proc_begin) {
     prev = proc_begin;
     curr = proc_begin;
     while(curr != NULL) {
-        printf("Deleting process %p\n", curr); //! DEBUG
         free(curr->argv);
-        printf("-----> liberou memoria de algum argv\n");  //! DEBUG
         curr = curr->next;
         free(prev);
-        printf("-----> liberou memoria de um ponteiro processo\n");  //! DEBUG
         prev = curr;
     }
 }
@@ -161,9 +158,19 @@ void init_shell ()
 }
 
 /* Format information about job status for the user to look at.  */
+// (customized w.r.t. GNU Lib C manual)
 void format_job_info (job *j, const char *status)
 {
-  fprintf (stderr, "%ld (%s): %s\n", (long)j->pgid, status, j->command);
+  int i = 1;
+  job *j_, *jnext;
+  for (j_ = first_job; j_; j_ = jnext)
+    {
+      jnext = j_->next;
+      if (j_ == j) {
+        printf("[%d] (%s): %s\n", i, "stopped", j_->command);
+      }
+      i++;
+    }
 }
 
 /* Store the status of the process pid that was returned by waitpid.
@@ -441,9 +448,7 @@ void continue_job (job *j, int foreground)
 
 // Custom version of GNU man's do_job_notification function (see above) that is more suitable for
 // answering user's command "jobs".
-// Motivations:
-//  1. Original do_job_notification mark stopped jobs to notify the user only once.
-//  2. We want to print the job position in the jobs linked list instead of its pgid as does do_job_notification
+// Motivations: Original do_job_notification mark stopped jobs to notify the user only once.
 // Indeed, do_job_notification is intended to be called without user's explicit request
 void do_custom_job_notification (void)
 {
@@ -453,7 +458,7 @@ void do_custom_job_notification (void)
   update_status ();
 
   jlast = NULL;
-  int i = 0;
+  int i = 1;
   for (j = first_job; j; j = jnext)
     {
       jnext = j->next;
@@ -538,7 +543,7 @@ int main() {
             // read job id
             tmp = strtok(NULL, " ");
             if(tmp == NULL) {
-                printf("Usage: fg N \n\twhere N is the (0-indexed) job position in the list of jobs.\n");
+                printf("Usage: fg N \n\twhere N is the (1-indexed) job position in the list of jobs.\n");
                 free(cmd);
                 continue;
             }
@@ -549,7 +554,7 @@ int main() {
                 printf("Could not find job %d\n", N);
                 continue;
             }
-            for(int i = 0; i < N; i++) {
+            for(int i = 1; i < N; i++) {
                 j = j->next;
                 if(j == NULL) {
                     printf("Could not find job %d\n", N);
@@ -639,31 +644,8 @@ int main() {
         // launch job
         launch_job(new_job, 1);
 
-        //* /////////////////////////////////////////////////////////////////////////////////////////////////////
-        // TODO BRING IT BACK
-        // // deal corner case of I/O redirection symbol (>, <) in an argument (i.e. no surrounding spaces)
-        // int restart = 0;
-        // for(int i = 0; i < argc; i++) {
-        //     char * str = argv[i];
-        //     for(int j = 0; j < strlen(str); j++) {
-        //         if(str[j] == '<' || str[j] == '>') {
-        //             printf("MINISHELL ERROR: Found a < or a > in argument %s.\n", str);
-        //             printf("Please add blank spaces if your intention is to perform I/O redirection.\n");
-        //             restart = 1;
-        //             break;
-        //         }
-        //     }
-        // }
-        // if(restart) {
-        //     free(cmd);
-        //     free(argv);
-        //     continue;
-        // }
-        //* /////////////////////////////////////////////////////////////////////////////////////////////////////
-
         // free memory
         free(cmd);
-        printf("-----> liberou memoria de cmd\n"); //! DEBUG
         // free_pipeline(proc_begin);
     }
 
