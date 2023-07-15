@@ -455,7 +455,7 @@ void continue_job (job *j, int foreground)
 // answering user's command "jobs".
 // Motivations: Original do_job_notification mark stopped jobs to notify the user only once.
 // Indeed, do_job_notification is intended to be called without user's explicit request
-void do_custom_job_notification (void)
+void do_custom_job_notification (int N)
 {
   job *j, *jlast, *jnext;
 
@@ -469,7 +469,7 @@ void do_custom_job_notification (void)
       jnext = j->next;
 
       /* Notify the user about stopped jobs */
-      if (job_is_stopped (j)) {
+      if (job_is_stopped (j) && (N == -1 || i == N)) {
         printf("[%d] (%s): %s\n", i, "stopped", j->command);
         jlast = j;
       }
@@ -553,14 +553,7 @@ int main() {
             break;
         }
 
-        // special case 2: list jobs
-        if(strcmp(cmd, "jobs") == 0) {
-            free(cmd);
-            do_custom_job_notification();
-            continue;
-        }
-
-        // special case 3: no command
+        // special case 2: no command
         if(strcmp(cmd, "") == 0) {
             free(cmd);
             continue;
@@ -568,6 +561,20 @@ int main() {
 
         // First parse of cmd
         tmp = strtok(cmd, delim);
+
+        // special case 23 list jobs
+        if(strcmp(tmp, "jobs") == 0) {
+            tmp = strtok(NULL, " ");
+            if(tmp != NULL) {
+              int N = atoi(tmp);
+              free(cmd);
+              do_custom_job_notification(N);
+            } else {
+              free(cmd);
+              do_custom_job_notification(-1);
+            }
+            continue;
+        }
 
         // special case 4: fg %N (bring process to foreground)
         if(strcmp(tmp, "fg") == 0) {
