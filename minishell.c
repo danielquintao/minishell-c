@@ -501,6 +501,21 @@ void print_process(process *proc) {
     printf("\tstopped: %d\n", proc->stopped);
     printf("\tstatus: %d\n", proc->status);
 }
+void print_jobs_stats() {
+    int job_counter = 0;
+    for(job* j=first_job; j != NULL; j=j->next) {
+        job_counter++;
+        int process_counter = 0;
+        int process_completed_counter = 0;
+        int process_stopped_counter = 0;
+        for(process* proc=j->first_process; proc != NULL; proc=proc->next) {
+            process_counter++;
+            if(proc->completed) process_completed_counter++;
+            if(proc->stopped) process_stopped_counter++;
+        }
+        printf("Job %d (%s): %d processes (%d completed, %d stopped)\n", job_counter, j->command, process_counter, process_completed_counter, process_stopped_counter);
+    }
+}
 
 int main() {
 
@@ -517,6 +532,7 @@ int main() {
         // According to GNU man, "A good place to put a such a check for terminated and stopped jobs is
         // just before prompting for a new command". So we'll do it here
         do_job_notification(new_job);
+        new_job = NULL;
 
         // read cmd
         char *cmd;
@@ -596,6 +612,7 @@ int main() {
         new_job->notified = 0;
         new_job->command = malloc(256);
         strcpy(new_job->command, cmd);
+        new_job->next = NULL;
         while(has_next) {
             if(proc_begin == NULL) { // first loop cycle
                 proc_begin = proc_end;
