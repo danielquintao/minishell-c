@@ -46,6 +46,7 @@ typedef struct job
 // c.f. https://www.gnu.org/software/libc/manual/html_node/Implementing-a-Shell.html
 
 job *first_job = NULL;
+job* new_job = NULL;
 pid_t shell_pgid;
 struct termios shell_tmodes;
 int shell_terminal;
@@ -139,7 +140,7 @@ void init_shell ()
       signal (SIGTSTP, SIG_IGN);
       signal (SIGTTIN, SIG_IGN);
       signal (SIGTTOU, SIG_IGN);
-      signal (SIGCHLD, SIG_IGN);
+      // signal (SIGCHLD, SIG_IGN);
 
       /* Put ourselves in our own process group.  */
       shell_pgid = getpid ();
@@ -167,7 +168,7 @@ void format_job_info (job *j, const char *status)
     {
       jnext = j_->next;
       if (j_ == j) {
-        printf("[%d] (%s): %s\n", i, "stopped", j_->command);
+        printf("[%d] (%s): %s\n", i, status, j_->command);
       }
       i++;
     }
@@ -277,7 +278,10 @@ void update_status (void)
 
 /* Notify the user about stopped or terminated jobs.
    Delete terminated jobs from the active job list.  */
-void do_job_notification (void)
+// modification w.r.t. original Lib C code: argument do_not_notify to allow us 
+// to blacklist the job we JUST LAUNCHED so its 'completed' status is not printed
+// (indeed, this notification would be useful only for background *running* jobs that just completed)
+void do_job_notification (job* do_not_notify)
 {
   job *j, *jlast, *jnext;
 
@@ -292,7 +296,8 @@ void do_job_notification (void)
       /* If all processes have completed, tell the user the job has
          completed and delete it from the list of active jobs.  */
       if (job_is_completed (j)) {
-        format_job_info (j, "completed");
+        if(do_not_notify != NULL && j != do_not_notify)
+          format_job_info(j, "completed");
         if (jlast)
           jlast->next = jnext;
         else
@@ -485,6 +490,16 @@ void print_process(process *proc) {
     printf("\targs:\n");
     for(int i = 0; i < proc->argc; i++) 
         printf("\t\t%s\n", proc->argv[i]);
+    printf("\tid: %d\n", proc->pid);
+    int pgid = getpgid(proc->pid);
+    printf("\tpgid: %d\n", pgid);
+    if(pgid == -1) {
+        printf("\terrno %d (esrch=%d)\n", errno, ESRCH);
+        printf("\tESRCH  For getpgid(): pid does not match any process\n");
+    }
+    printf("\tcompleted: %d\n", proc->completed);
+    printf("\tstopped: %d\n", proc->stopped);
+    printf("\tstatus: %d\n", proc->status);
 }
 
 int main() {
@@ -501,7 +516,7 @@ int main() {
     while(1) {
         // According to GNU man, "A good place to put a such a check for terminated and stopped jobs is
         // just before prompting for a new command". So we'll do it here
-        do_job_notification();
+        do_job_notification(new_job);
 
         // read cmd
         char *cmd;
@@ -573,7 +588,7 @@ int main() {
         proc_end = (process *) malloc(sizeof (*proc_end));
         proc_end->completed = 0;
         proc_end->stopped = 0;
-        job* new_job = (job *) malloc(sizeof (*new_job));
+        new_job = (job *) malloc(sizeof (*new_job));
         new_job->stdin = 0;
         new_job->stdout = 1;
         new_job->stderr = 2;
